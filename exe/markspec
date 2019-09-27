@@ -1,0 +1,125 @@
+#!/usr/bin/env ruby
+
+require 'markspec'
+require 'redcarpet'
+require 'fileutils'
+
+files = Dir['spec/**/*.md']
+
+# hacky renderer to extract blocks
+class CustomRender < Redcarpet::Render::HTML
+  attr_accessor :stuff
+
+  def initialize
+    @stuff = []
+    super
+  end
+
+  def block_code(code, _things)
+    @stuff << code
+    code
+  end
+end
+
+CUTTER_REGEX = /^(?<front>```[a-z0-9]+).+/.freeze
+
+def preprocess_file(file)
+  contents = File.read file
+
+  contexts = []
+  lines = contents.split "\n"
+  nlines = lines.map do |line|
+    line.gsub(CUTTER_REGEX) do |m|
+      contexts << m
+      CUTTER_REGEX.match(m)[:front]
+    end
+  end
+
+  { raw: nlines.join("\n"), contexts: contexts }
+end
+
+def retrieve_file_commands(file)
+  info = preprocess_file(file)
+
+  cr = CustomRender.new
+  markdown = Redcarpet::Markdown.new(
+    cr,
+    fenced_code_blocks: true,
+    disable_indented_code_blocks: true
+  )
+
+  markdown.render(info[:raw])
+  info[:contexts].zip(cr.stuff)
+end
+
+# a test case
+class TestCase
+  def initialize(cmds)
+    @expectations = []
+    @prep = []
+    @commands = []
+    @cmds = cmds
+    parse!
+  end
+
+  def pass?
+    execute!
+
+    @result ? true : false
+  end
+
+  private
+
+  def execute!
+    @prep.each do |info|
+      File.write(info[:file], info[:content])
+    end
+
+    output = ''
+    @commands.each do |block|
+      output = `#{block}`
+    end
+
+    @result = true
+
+    @expectations.each do |info|
+      @result &&= case info[:thing]
+                  when /^file:(.+)/
+                    File.read($1) == info[:content] ||
+                      File.read($1) == info[:content].chomp
+                  when 'stdout'
+                    output == info[:content] ||
+                      output == info[:content].chomp
+                  end
+    end
+
+    nil
+  end
+
+  def parse!
+    @cmds.each do |annotation, block|
+      x = CUTTER_REGEX.match(annotation)
+      command = annotation.sub(/^#{x[:front]}\s+/, '')
+
+      case command
+      when /^file:(.+)/
+        @prep << { file: $1, content: block }
+      when /^command/
+        @commands << block
+      when /^expected (.+)/
+        @expectations << { thing: $1, content: block }
+      end
+    end
+  end
+end
+
+files.each do |file|
+  cmds = retrieve_file_commands file
+  print "Test: #{file} - "
+  tc = TestCase.new(cmds)
+  if tc.pass?
+    puts 'pass'
+  else
+    puts 'fail'
+  end
+end
