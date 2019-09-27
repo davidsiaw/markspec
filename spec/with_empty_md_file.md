@@ -10,7 +10,7 @@ You can run this command:
 bundle exec markspec testmd
 ```
 
-You should get:
+And you should get:
 
 ```text expected stdout
 Test: testmd - pass

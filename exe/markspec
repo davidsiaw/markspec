@@ -86,7 +86,12 @@ class TestCase
     @expectations.each do |info|
       @result &&= case info[:thing]
                   when /^file:(.+)/
-                    File.read($1).chomp == info[:content].chomp
+                    contents = File.read($1).chomp
+                    if info[:type] == 'regex'
+                      Regexp.new(info[:content].chomp) =~ contents
+                    else
+                      contents == info[:content].chomp
+                    end
                   when 'stdout'
                     output.chomp == info[:content].chomp
                   end
@@ -106,7 +111,11 @@ class TestCase
       when /^command/
         @commands << block
       when /^expected (.+)/
-        @expectations << { thing: $1, content: block || '' }
+        @expectations << {
+          thing: $1,
+          content: block || '',
+          type: x[:front][3..-1]
+        }
       end
     end
   end
