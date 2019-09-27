@@ -1,6 +1,6 @@
-require 'mdspec/version'
+require 'markspec/version'
 
-module Mdspec
+module Markspec
   class Error < StandardError; end
   # Your code goes here...
 end

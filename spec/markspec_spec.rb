@@ -1,6 +1,6 @@
-RSpec.describe Mdspec do
+RSpec.describe Markspec do
   it 'has a version number' do
-    expect(Mdspec::VERSION).not_to be nil
+    expect(Markspec::VERSION).not_to be nil
   end
 
   it 'does something useful' do
