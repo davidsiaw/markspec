@@ -1,4 +1,4 @@
-Markdown files with no expectation blocks always pass.
+Markdown files with no expectation blocks will say none.
 
 Given a markdown file with the following contents:
 
@@ -17,5 +17,5 @@ bundle exec markspec test.md
 And you should get:
 
 ```text expected stdout
-Test: test.md - pass
+Test: test.md - none
 ```

@@ -10,20 +10,20 @@ echo complicated > meow
 ```
 
 ```regex expected file:meow
-^com[a-z]+ted
+^com[a-z]+
 ```
 ~~~
 
 You can run this command:
 
 ```bash command
-bundle exec markspec my_awesome_test
+bundle exec markspec my_awesome_test.md
 ```
 
 You should get:
 
 ```text expected stdout
-Test: my_awesome_test - pass
+Test: my_awesome_test.md - pass
 ```
 
 This is because the expected contents of the file after running the command is what you have expected.

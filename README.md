@@ -22,7 +22,23 @@ Or install it yourself as:
 
 ## Usage
 
-TODO: Write usage instructions here
+By defauly, Markspec looks for markdown files in the spec directory where you execute it.
+
+```
+markspec
+```
+
+This will run all the markdown specs you have written in your specs folder.
+
+You can also choose to run a specific markdown file:
+
+```
+markspec spec/myspec.md
+```
+
+## How do I write tests?
+
+Have a look at the spec folder!
 
 ## Development
 

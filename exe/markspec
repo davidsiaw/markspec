@@ -4,6 +4,7 @@ require 'markspec'
 require 'fileutils'
 require 'yaml'
 require 'open3'
+require 'colorize'
 
 files = [ARGV[0]]
 files = Dir['spec/**/*.md'] if files.first.nil?
@@ -31,8 +32,8 @@ def preprocess_file(file)
       inside_type = false
       blocks << current_block.join("\n")
       current_block = []
-    else
-      current_block << line if inside_type
+    elsif inside_type
+      current_block << line
     end
 
     if !inside_type
@@ -53,13 +54,14 @@ end
 
 # a test case
 class TestCase
-  attr_reader :expected, :matcher
+  attr_reader :expected, :matcher, :exception, :file, :results_list
 
-  def initialize(cmds)
-    @expectations = []
+  def initialize(cmds, file)
+    @file = file
     @prep = []
     @commands = []
     @cmds = cmds
+    @results_list = []
     parse!
   end
 
@@ -79,39 +81,63 @@ class TestCase
 
     @result = true
 
-    @commands.each_with_index do |block, index|
+    stdout = ''
+    stderr = ''
+    status = ''
+
+    @commands.each_with_index do |cmd, index|
       begin
-        stdout, stderr, status = Open3.capture3(block)
-        info = @expectations[index]
-        matched_result = case info[:thing]
-                         when /^file:(.+)/
-                           File.read($1).chomp
-                         when 'stdout'
-                           stdout
-                         when 'stderr'
-                           stderr
-                         when 'exitcode'
-                           status.exitstatus.to_s
-                         end
+        if cmd[:kind] == :command
+          block = cmd[:block]
+          stdout, stderr, status = Open3.capture3(block)
 
-        @result &&= case info[:type]
-                    when 'binary'
-                      chars = info[:content]
-                              .split(/\s+/)
-                              .map { |x| x.to_i(16) }
+        elsif cmd[:kind] == :expectation
+          matched_result = case cmd[:thing]
+                           when /^file:(.+)(:)?/
+                             File.read(Regexp.last_match(1)).chomp
+                           when 'stdout'
+                             stdout
+                           when 'stderr'
+                             stderr
+                           when 'exitcode'
+                             status.exitstatus.to_s
+                           end
 
-                      exp_chars = matched_result.chars.map(&:ord)
+          this_result = case cmd[:type]
+                        when 'binary'
+                          chars = cmd[:content]
+                                  .split(/\s+/)
+                                  .map { |x| x.to_i(16) }
 
-                      if chars.length != exp_chars.length
-                        false
-                      else
-                        exp_chars == chars
-                      end
-                    when 'regex'
-                      Regexp.new(info[:content].chomp) =~ matched_result
-                    else
-                      matched_result.chomp == info[:content].chomp
-                    end
+                          exp_chars = matched_result.chars.map(&:ord)
+
+                          @expected = exp_chars.inspect
+                          @matcher = chars.inspect
+
+                          if chars.length != exp_chars.length
+                            false
+                          else
+                            exp_chars == chars
+                          end
+                        when 'regex'
+                          @expected = Regexp.new(cmd[:content].chomp.uncolorize).inspect
+                          @matcher = matched_result.inspect
+
+                          Regexp.new(cmd[:content].chomp.uncolorize) =~ matched_result
+                        else
+                          @expected = cmd[:content].inspect
+                          @matcher = matched_result.chomp.uncolorize.inspect
+
+                          matched_result.chomp.uncolorize == cmd[:content].chomp
+                        end
+
+          @results_list << {
+            pass: this_result,
+            index: index,
+            file: file
+          }
+          @result &&= this_result
+        end
       rescue StandardError => _e
         @result = false
       end
@@ -127,12 +153,16 @@ class TestCase
 
       case command
       when /^file:(.+)/
-        @prep << { file: $1, content: block }
+        @prep << { file: Regexp.last_match(1), content: block }
       when /^command/
-        @commands << block
+        @commands << {
+          kind: :command,
+          block: block
+        }
       when /^expected (.+)/
-        @expectations << {
-          thing: $1,
+        @commands << {
+          kind: :expectation,
+          thing: Regexp.last_match(1),
           content: block || '',
           type: x[:front][3..-1]
         }
@@ -141,16 +171,26 @@ class TestCase
   end
 end
 
-cases = []
+failcases = []
 files.each do |file|
   info = preprocess_file file
   cmds = info[:contexts].zip(info[:blocks])
   print "Test: #{file} - "
-  tc = TestCase.new(cmds)
-  if tc.pass?
-    puts 'pass'
+  tc = TestCase.new(cmds, file)
+  failcases << tc unless tc.pass?
+  if tc.results_list.length.nonzero?
+    puts(tc.results_list.map { |x| x[:pass] ? 'pass'.green : 'fail'.red }.join(' '))
   else
-    puts 'fail'
+    puts 'none'.yellow
   end
-  cases << tc
+end
+
+if failcases.length.nonzero?
+  STDERR.puts "Failures detected: #{failcases.length} cases"
+  failcases.each_with_index do |c, i|
+    STDERR.puts
+    STDERR.puts "#{i+1}. bundle exec markspec #{c.file}"
+    STDERR.puts "    expected: #{c.expected}"
+    STDERR.puts "         got: #{c.matcher}"
+  end
 end
