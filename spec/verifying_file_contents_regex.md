@@ -2,7 +2,9 @@ Sometimes its not possible to have exact matches if the command output changes o
 
 Given a markdown file with the following contents:
 
-~~~text file:aaa
+~~~text file:my_awesome_test.md
+# my_awesome_test.md
+
 ```bash command
 echo complicated > meow
 ```
@@ -15,13 +17,13 @@ echo complicated > meow
 You can run this command:
 
 ```bash command
-bundle exec markspec aaa
+bundle exec markspec my_awesome_test
 ```
 
 You should get:
 
 ```text expected stdout
-Test: aaa - pass
+Test: my_awesome_test - pass
 ```
 
 This is because the expected contents of the file after running the command is what you have expected.

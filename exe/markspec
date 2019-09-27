@@ -3,6 +3,7 @@
 require 'markspec'
 require 'fileutils'
 require 'yaml'
+require 'open3'
 
 files = [ARGV[0]]
 files = Dir['spec/**/*.md'] if files.first.nil?
@@ -52,6 +53,8 @@ end
 
 # a test case
 class TestCase
+  attr_reader :expected, :matcher
+
   def initialize(cmds)
     @expectations = []
     @prep = []
@@ -61,9 +64,10 @@ class TestCase
   end
 
   def pass?
-    execute!
-
-    @result ? true : false
+    @pass ||= begin
+      execute!
+      @result ? true : false
+    end
   end
 
   private
@@ -73,28 +77,33 @@ class TestCase
       File.write(info[:file], info[:content])
     end
 
-    output = ''
-    @commands.each do |block|
-      begin
-        output = `#{block}`
-      rescue StandardError => e
-      end
-    end
-
     @result = true
 
-    @expectations.each do |info|
-      @result &&= case info[:thing]
-                  when /^file:(.+)/
-                    contents = File.read($1).chomp
-                    if info[:type] == 'regex'
-                      Regexp.new(info[:content].chomp) =~ contents
+    @commands.each_with_index do |block, index|
+      begin
+        stdout, stderr, status = Open3.capture3(block)
+        info = @expectations[index]
+        matched_result = case info[:thing]
+                         when /^file:(.+)/
+                           File.read($1).chomp
+                         when 'stdout'
+                           stdout
+                         when 'stderr'
+                           stderr
+                         when 'exitcode'
+                           status.exitstatus.to_s
+                         end
+
+        @result &&= case info[:type]
+                    when 'regex'
+                      Regexp.new(info[:content].chomp) =~ matched_result
                     else
-                      contents == info[:content].chomp
+                      matched_result.chomp == info[:content].chomp
                     end
-                  when 'stdout'
-                    output.chomp == info[:content].chomp
-                  end
+
+      rescue StandardError => _e
+        @result = false
+      end
     end
 
     nil
@@ -121,6 +130,7 @@ class TestCase
   end
 end
 
+cases = []
 files.each do |file|
   info = preprocess_file file
   cmds = info[:contexts].zip(info[:blocks])
@@ -131,4 +141,5 @@ files.each do |file|
   else
     puts 'fail'
   end
+  cases << tc
 end
