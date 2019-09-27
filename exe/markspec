@@ -3,8 +3,10 @@
 require 'markspec'
 require 'redcarpet'
 require 'fileutils'
+require 'yaml'
 
-files = Dir['spec/**/*.md']
+files = [ARGV[0]]
+files = Dir['spec/**/*.md'] if files.first.nil?
 
 # hacky renderer to extract blocks
 class CustomRender < Redcarpet::Render::HTML
@@ -21,21 +23,49 @@ class CustomRender < Redcarpet::Render::HTML
   end
 end
 
-CUTTER_REGEX = /^(?<front>```[a-z0-9]+).+/.freeze
+CUTTER_REGEX = /^(?<front>(```|~~~)[a-z0-9]+).+/.freeze
 
 def preprocess_file(file)
   contents = File.read file
 
   contexts = []
+  blocks = []
+
   lines = contents.split "\n"
+  inside_type = false
+  current_block = []
+
   nlines = lines.map do |line|
-    line.gsub(CUTTER_REGEX) do |m|
-      contexts << m
-      CUTTER_REGEX.match(m)[:front]
+    # if inside_type
+    #   puts "#{inside_type} #{line}"
+    # else
+    #   puts "    #{line}"
+    # end
+
+    if line[0..2] == inside_type
+      inside_type = false
+      blocks << current_block.join("\n")
+      current_block = []
+    else
+      if inside_type
+        current_block << line
+      end
+    end
+
+    if !inside_type
+      line.gsub(CUTTER_REGEX) do |m|
+        contexts << m
+        matched = CUTTER_REGEX.match(m)
+        inside_type = matched[:front][0..2]
+
+        matched[:front]
+      end
+    else
+      line
     end
   end
 
-  { raw: nlines.join("\n"), contexts: contexts }
+  { raw: nlines.join("\n"), contexts: contexts, blocks: blocks }
 end
 
 def retrieve_file_commands(file)
@@ -77,7 +107,10 @@ class TestCase
 
     output = ''
     @commands.each do |block|
-      output = `#{block}`
+      begin
+        output = `#{block}`
+      rescue StandardError => e
+      end
     end
 
     @result = true
@@ -85,11 +118,9 @@ class TestCase
     @expectations.each do |info|
       @result &&= case info[:thing]
                   when /^file:(.+)/
-                    File.read($1) == info[:content] ||
-                      File.read($1) == info[:content].chomp
+                    File.read($1).chomp == info[:content].chomp
                   when 'stdout'
-                    output == info[:content] ||
-                      output == info[:content].chomp
+                    output.chomp == info[:content].chomp
                   end
     end
 
@@ -107,14 +138,15 @@ class TestCase
       when /^command/
         @commands << block
       when /^expected (.+)/
-        @expectations << { thing: $1, content: block }
+        @expectations << { thing: $1, content: block || '' }
       end
     end
   end
 end
 
 files.each do |file|
-  cmds = retrieve_file_commands file
+  info = preprocess_file file
+  cmds = info[:contexts].zip(info[:blocks])
   print "Test: #{file} - "
   tc = TestCase.new(cmds)
   if tc.pass?
