@@ -10,7 +10,7 @@ echo complicated > meow
 ```
 
 ```regex expected file:meow
-^com[a-z]+
+^com[a-z]+ted
 ```
 ~~~
 

@@ -95,12 +95,23 @@ class TestCase
                          end
 
         @result &&= case info[:type]
+                    when 'binary'
+                      chars = info[:content]
+                              .split(/\s+/)
+                              .map { |x| x.to_i(16) }
+
+                      exp_chars = matched_result.chars.map(&:ord)
+
+                      if chars.length != exp_chars.length
+                        false
+                      else
+                        exp_chars == chars
+                      end
                     when 'regex'
                       Regexp.new(info[:content].chomp) =~ matched_result
                     else
                       matched_result.chomp == info[:content].chomp
                     end
-
       rescue StandardError => _e
         @result = false
       end
