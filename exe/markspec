@@ -75,9 +75,21 @@ class TestCase
   private
 
   def execute!
+    tempfiles = []
+
     @prep.each do |info|
       File.write(info[:file], info[:content])
+      tempfiles << { temp: info[:file] }
     end
+
+    actually_execute!
+
+    tempfiles.each do |info|
+      FileUtils.rm info[:temp]
+    end
+  end
+
+  def actually_execute!
 
     @result = true
 
