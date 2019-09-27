@@ -1,27 +1,11 @@
 #!/usr/bin/env ruby
 
 require 'markspec'
-require 'redcarpet'
 require 'fileutils'
 require 'yaml'
 
 files = [ARGV[0]]
 files = Dir['spec/**/*.md'] if files.first.nil?
-
-# hacky renderer to extract blocks
-class CustomRender < Redcarpet::Render::HTML
-  attr_accessor :stuff
-
-  def initialize
-    @stuff = []
-    super
-  end
-
-  def block_code(code, _things)
-    @stuff << code
-    code
-  end
-end
 
 CUTTER_REGEX = /^(?<front>(```|~~~)[a-z0-9]+).+/.freeze
 
@@ -47,9 +31,7 @@ def preprocess_file(file)
       blocks << current_block.join("\n")
       current_block = []
     else
-      if inside_type
-        current_block << line
-      end
+      current_block << line if inside_type
     end
 
     if !inside_type
@@ -66,20 +48,6 @@ def preprocess_file(file)
   end
 
   { raw: nlines.join("\n"), contexts: contexts, blocks: blocks }
-end
-
-def retrieve_file_commands(file)
-  info = preprocess_file(file)
-
-  cr = CustomRender.new
-  markdown = Redcarpet::Markdown.new(
-    cr,
-    fenced_code_blocks: true,
-    disable_indented_code_blocks: true
-  )
-
-  markdown.render(info[:raw])
-  info[:contexts].zip(cr.stuff)
 end
 
 # a test case
